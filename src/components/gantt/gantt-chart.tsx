@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, CircleCheck, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -48,9 +48,13 @@ export function GanttChart({
     moverActividadConSubtareas,
     redimensionarActividad,
     programarActividad,
+    agregarDependencia,
   } = useClarityStore();
   const [zoom, setZoom] = useState<Zoom>("semana");
   const [colapsadas, setColapsadas] = useState<Set<string>>(new Set());
+  const [conectandoDesde, setConectandoDesde] = useState<string | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const cuerpoRef = useRef<HTMLDivElement>(null);
 
   const actividades = useMemo(
     () => todas.filter((a) => a.proyecto_id === proyectoId),
@@ -155,6 +159,78 @@ export function GanttChart({
 
     return out;
   }, [scheduled, backlog, getSubtareas, colapsadas, rangoTimeline.inicio]);
+
+  const filaIndicePorId = useMemo(() => {
+    const map = new Map<string, number>();
+    rows.forEach((row, i) => {
+      if (row.kind === "item") map.set(row.actividad.id, i);
+    });
+    return map;
+  }, [rows]);
+
+  const dependenciasVisibles = useMemo(() => {
+    const lineas: {
+      key: string;
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+    }[] = [];
+    for (const row of rows) {
+      if (row.kind !== "item" || !row.scheduled) continue;
+      for (const predId of row.actividad.dependencias) {
+        const predIdx = filaIndicePorId.get(predId);
+        const succIdx = filaIndicePorId.get(row.actividad.id);
+        const predecesora = actividades.find((a) => a.id === predId);
+        if (predIdx === undefined || succIdx === undefined || !predecesora) continue;
+        if (!predecesora.fecha_inicio || !predecesora.fecha_fin) continue;
+        const predGeom = computeBarGeometry(
+          rangoTimeline.inicio,
+          predecesora.fecha_inicio,
+          predecesora.fecha_fin,
+          pxPerDay,
+        );
+        const succGeom = computeBarGeometry(
+          rangoTimeline.inicio,
+          row.actividad.fecha_inicio!,
+          row.actividad.fecha_fin!,
+          pxPerDay,
+        );
+        lineas.push({
+          key: `${predId}->${row.actividad.id}`,
+          x1: predGeom.left + predGeom.width,
+          y1: predIdx * ROW_HEIGHT + ROW_HEIGHT / 2,
+          x2: succGeom.left,
+          y2: succIdx * ROW_HEIGHT + ROW_HEIGHT / 2,
+        });
+      }
+    }
+    return lineas;
+  }, [rows, filaIndicePorId, actividades, rangoTimeline.inicio, pxPerDay]);
+
+  const iniciarConexion = (predecesoraId: string) => {
+    setConectandoDesde(predecesoraId);
+
+    const onMove = (ev: PointerEvent) => {
+      const rect = cuerpoRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMousePos({ x: ev.clientX - rect.left, y: ev.clientY - rect.top });
+    };
+    const onUp = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      const destino = el?.closest("[data-actividad-id]") as HTMLElement | null;
+      const sucesoraId = destino?.dataset.actividadId;
+      if (sucesoraId && sucesoraId !== predecesoraId) {
+        agregarDependencia(sucesoraId, predecesoraId);
+      }
+      setConectandoDesde(null);
+      setMousePos(null);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   const headerMeses = useMemo(() => {
     const segmentos: { label: string; dias: number }[] = [];
@@ -341,7 +417,7 @@ export function GanttChart({
               </div>
             </div>
 
-            <div className="relative">
+            <div className="relative" ref={cuerpoRef}>
               {hoyDentroDeRango && (
                 <div
                   className="absolute top-0 z-20 h-full w-px bg-accent"
@@ -352,6 +428,64 @@ export function GanttChart({
                   </span>
                 </div>
               )}
+              <svg
+                className="pointer-events-none absolute left-0 top-0 z-10 overflow-visible"
+                width={totalWidth}
+                height={rows.length * ROW_HEIGHT}
+              >
+                {dependenciasVisibles.map((l) => {
+                  const stub = 12;
+                  const cx1 = l.x1 + stub;
+                  const cx2 = l.x2 - stub;
+                  return (
+                    <path
+                      key={l.key}
+                      d={`M ${l.x1} ${l.y1} C ${cx1} ${l.y1}, ${cx2} ${l.y2}, ${l.x2 - 4} ${l.y2}`}
+                      fill="none"
+                      stroke="#71717A"
+                      strokeWidth={1.5}
+                      markerEnd="url(#flecha)"
+                    />
+                  );
+                })}
+                {conectandoDesde &&
+                  mousePos &&
+                  (() => {
+                    const origen = actividades.find((a) => a.id === conectandoDesde);
+                    const idx = filaIndicePorId.get(conectandoDesde);
+                    if (!origen?.fecha_inicio || !origen.fecha_fin || idx === undefined)
+                      return null;
+                    const geom = computeBarGeometry(
+                      rangoTimeline.inicio,
+                      origen.fecha_inicio,
+                      origen.fecha_fin,
+                      pxPerDay,
+                    );
+                    return (
+                      <line
+                        x1={geom.left + geom.width}
+                        y1={idx * ROW_HEIGHT + ROW_HEIGHT / 2}
+                        x2={mousePos.x}
+                        y2={mousePos.y}
+                        stroke="#3B5BDB"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 3"
+                      />
+                    );
+                  })()}
+                <defs>
+                  <marker
+                    id="flecha"
+                    markerWidth={8}
+                    markerHeight={8}
+                    refX={6}
+                    refY={3}
+                    orient="auto"
+                  >
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#A1A1AA" />
+                  </marker>
+                </defs>
+              </svg>
               {rows.map((row, i) =>
                 row.kind === "section" ? (
                   <div
@@ -373,6 +507,7 @@ export function GanttChart({
                 ) : (
                   <div
                     key={`bar-${row.actividad.id}`}
+                    data-actividad-id={row.actividad.id}
                     style={{ height: ROW_HEIGHT }}
                     className="relative border-b border-border"
                   >
@@ -396,6 +531,7 @@ export function GanttChart({
                             ),
                           )
                         }
+                        onIniciarConexion={() => iniciarConexion(row.actividad.id)}
                         {...computeBarGeometry(
                           rangoTimeline.inicio,
                           row.actividad.fecha_inicio!,

@@ -10,7 +10,7 @@ import {
 import { MOCK_PROYECTOS } from "@/lib/mock/proyectos";
 import { MOCK_ACTIVIDADES } from "@/lib/mock/actividades";
 import { AUTOR_ACTUAL } from "@/lib/constants";
-import { addDays } from "@/lib/dates";
+import { addDays, diffDays } from "@/lib/dates";
 import { COLUMNAS } from "@/lib/types";
 import type {
   Actividad,
@@ -78,9 +78,59 @@ interface ClarityStore {
     nuevaFecha: string,
   ) => void;
   programarActividad: (id: string, inicio: string, fin: string) => void;
+  agregarDependencia: (sucesoraId: string, predecesoraId: string) => void;
+  quitarDependencia: (sucesoraId: string, predecesoraId: string) => void;
 }
 
 const ClarityContext = createContext<ClarityStore | null>(null);
+
+function desplazarConSubtareas(
+  lista: Actividad[],
+  id: string,
+  deltaDias: number,
+): Actividad[] {
+  if (deltaDias === 0) return lista;
+  const afectadas = new Set([
+    id,
+    ...lista.filter((a) => a.parent_id === id).map((a) => a.id),
+  ]);
+  return lista.map((a) =>
+    afectadas.has(a.id) && a.fecha_inicio && a.fecha_fin
+      ? {
+          ...a,
+          fecha_inicio: addDays(a.fecha_inicio, deltaDias),
+          fecha_fin: addDays(a.fecha_fin, deltaDias),
+        }
+      : a,
+  );
+}
+
+// Finish-to-start: cuando una predecesora cambia de fecha_fin, empuja el
+// inicio de cada sucesora (y sus subtareas) al día siguiente, en cascada.
+function cascadearDependientes(
+  lista: Actividad[],
+  idCambiada: string,
+  visitados: Set<string> = new Set(),
+): Actividad[] {
+  if (visitados.has(idCambiada)) return lista;
+  visitados.add(idCambiada);
+  const cambiada = lista.find((a) => a.id === idCambiada);
+  if (!cambiada || !cambiada.fecha_fin) return lista;
+
+  let siguiente = lista;
+  const dependientes = siguiente.filter((a) =>
+    a.dependencias.includes(idCambiada),
+  );
+  for (const dep of dependientes) {
+    if (!dep.fecha_inicio || !dep.fecha_fin) continue;
+    const nuevoInicio = addDays(cambiada.fecha_fin, 1);
+    if (nuevoInicio === dep.fecha_inicio) continue;
+    const delta = diffDays(dep.fecha_inicio, nuevoInicio);
+    siguiente = desplazarConSubtareas(siguiente, dep.id, delta);
+    siguiente = cascadearDependientes(siguiente, dep.id, visitados);
+  }
+  return siguiente;
+}
 
 const nowIso = () => new Date().toISOString();
 
@@ -397,21 +447,11 @@ export function ClarityStoreProvider({
       if (deltaDias === 0) return;
       const actual = actividades.find((a) => a.id === id);
       if (!actual || !actual.fecha_inicio || !actual.fecha_fin) return;
-      const afectadas = new Set([
-        id,
-        ...actividades.filter((a) => a.parent_id === id).map((a) => a.id),
-      ]);
-      setActividades((prev) =>
-        prev.map((a) =>
-          afectadas.has(a.id) && a.fecha_inicio && a.fecha_fin
-            ? {
-                ...a,
-                fecha_inicio: addDays(a.fecha_inicio, deltaDias),
-                fecha_fin: addDays(a.fecha_fin, deltaDias),
-              }
-            : a,
-        ),
-      );
+      setActividades((prev) => {
+        let next = desplazarConSubtareas(prev, id, deltaDias);
+        next = cascadearDependientes(next, id);
+        return next;
+      });
       registrarLog(actual.proyecto_id, "ha movido las fechas de una actividad", id);
     },
     [actividades, registrarLog],
@@ -423,8 +463,8 @@ export function ClarityStoreProvider({
       if (!actual) return;
       if (extremo === "inicio" && actual.fecha_fin && nuevaFecha > actual.fecha_fin) return;
       if (extremo === "fin" && actual.fecha_inicio && nuevaFecha < actual.fecha_inicio) return;
-      setActividades((prev) =>
-        prev.map((a) =>
+      setActividades((prev) => {
+        let next = prev.map((a) =>
           a.id === id
             ? {
                 ...a,
@@ -432,8 +472,10 @@ export function ClarityStoreProvider({
                 fecha_fin: extremo === "fin" ? nuevaFecha : a.fecha_fin,
               }
             : a,
-        ),
-      );
+        );
+        if (extremo === "fin") next = cascadearDependientes(next, id);
+        return next;
+      });
       registrarLog(actual.proyecto_id, "ha cambiado la duración de una actividad", id);
     },
     [actividades, registrarLog],
@@ -443,12 +485,63 @@ export function ClarityStoreProvider({
     (id: string, inicio: string, fin: string) => {
       const actual = actividades.find((a) => a.id === id);
       if (!actual) return;
+      setActividades((prev) => {
+        const next = prev.map((a) =>
+          a.id === id ? { ...a, fecha_inicio: inicio, fecha_fin: fin } : a,
+        );
+        return cascadearDependientes(next, id);
+      });
+      registrarLog(actual.proyecto_id, "ha programado una actividad", id);
+    },
+    [actividades, registrarLog],
+  );
+
+  const agregarDependencia = useCallback(
+    (sucesoraId: string, predecesoraId: string) => {
+      if (sucesoraId === predecesoraId) return;
+      const sucesora = actividades.find((a) => a.id === sucesoraId);
+      const predecesora = actividades.find((a) => a.id === predecesoraId);
+      if (!sucesora || !predecesora) return;
+      if (
+        sucesora.parent_id === predecesoraId ||
+        predecesora.parent_id === sucesoraId
+      ) {
+        return;
+      }
+      if (sucesora.dependencias.includes(predecesoraId)) return;
+      setActividades((prev) => {
+        let next = prev.map((a) =>
+          a.id === sucesoraId
+            ? { ...a, dependencias: [...a.dependencias, predecesoraId] }
+            : a,
+        );
+        next = cascadearDependientes(next, predecesoraId);
+        return next;
+      });
+      registrarLog(
+        sucesora.proyecto_id,
+        `ha conectado "${predecesora.titulo}" como predecesora de "${sucesora.titulo}"`,
+        sucesoraId,
+      );
+    },
+    [actividades, registrarLog],
+  );
+
+  const quitarDependencia = useCallback(
+    (sucesoraId: string, predecesoraId: string) => {
+      const sucesora = actividades.find((a) => a.id === sucesoraId);
+      if (!sucesora) return;
       setActividades((prev) =>
         prev.map((a) =>
-          a.id === id ? { ...a, fecha_inicio: inicio, fecha_fin: fin } : a,
+          a.id === sucesoraId
+            ? {
+                ...a,
+                dependencias: a.dependencias.filter((d) => d !== predecesoraId),
+              }
+            : a,
         ),
       );
-      registrarLog(actual.proyecto_id, "ha programado una actividad", id);
+      registrarLog(sucesora.proyecto_id, "ha quitado una dependencia", sucesoraId);
     },
     [actividades, registrarLog],
   );
@@ -482,6 +575,8 @@ export function ClarityStoreProvider({
       moverActividadConSubtareas,
       redimensionarActividad,
       programarActividad,
+      agregarDependencia,
+      quitarDependencia,
     }),
     [
       proyectos,
@@ -511,6 +606,8 @@ export function ClarityStoreProvider({
       moverActividadConSubtareas,
       redimensionarActividad,
       programarActividad,
+      agregarDependencia,
+      quitarDependencia,
     ],
   );
 

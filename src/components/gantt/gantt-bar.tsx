@@ -12,6 +12,7 @@ export function GanttBar({
   onMover,
   onRedimensionar,
   onClick,
+  onIniciarConexion,
 }: {
   actividad: Actividad;
   left: number;
@@ -20,6 +21,7 @@ export function GanttBar({
   onMover: (deltaDias: number) => void;
   onRedimensionar: (extremo: "inicio" | "fin", deltaDias: number) => void;
   onClick: () => void;
+  onIniciarConexion?: () => void;
 }) {
   const [dragPx, setDragPx] = useState(0);
   const [resizing, setResizing] = useState<"inicio" | "fin" | null>(null);
@@ -111,6 +113,16 @@ export function GanttBar({
           onPointerDown={startResize("fin")}
           className="absolute -right-1 top-0 h-full w-2 cursor-ew-resize opacity-0 group-hover:opacity-100"
         />
+        {onIniciarConexion && (
+          <div
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onIniciarConexion();
+            }}
+            className="absolute -right-3.5 top-1/2 h-3 w-3 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-white bg-accent opacity-0 group-hover:opacity-100"
+            title="Arrastra para crear una dependencia"
+          />
+        )}
       </div>
     </div>
   );
