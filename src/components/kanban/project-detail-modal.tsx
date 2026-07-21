@@ -7,7 +7,7 @@ import { ColumnSelect } from "@/components/kanban/column-select";
 import { QuickActions } from "@/components/kanban/quick-actions";
 import { ActivityPanel } from "@/components/kanban/activity-panel";
 import { ActivitiesTab } from "@/components/kanban/activities-tab";
-import { ActivityDetailDialog } from "@/components/kanban/activity-detail-dialog";
+import { ActivityDetailDialog } from "@/components/shared/activity-detail-dialog";
 import { PriorityBadge } from "@/components/ui/badge";
 import { useClarityStore } from "@/lib/store";
 import { cn } from "@/lib/utils";

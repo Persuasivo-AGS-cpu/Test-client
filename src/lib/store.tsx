@@ -8,7 +8,9 @@ import {
   useState,
 } from "react";
 import { MOCK_PROYECTOS } from "@/lib/mock/proyectos";
+import { MOCK_ACTIVIDADES } from "@/lib/mock/actividades";
 import { AUTOR_ACTUAL } from "@/lib/constants";
+import { addDays } from "@/lib/dates";
 import { COLUMNAS } from "@/lib/types";
 import type {
   Actividad,
@@ -54,9 +56,28 @@ interface ClarityStore {
   agregarComentario: (id: string, texto: string) => void;
   iniciarGantt: (id: string) => void;
 
-  agregarActividad: (proyectoId: string, titulo: string) => void;
+  agregarActividad: (
+    proyectoId: string,
+    titulo: string,
+    opciones?: { seccion?: string | null; parentId?: string | null },
+  ) => void;
+  crearTareaProgramada: (input: {
+    proyectoId: string;
+    titulo: string;
+    seccion: string;
+    fechaInicio: string;
+    fechaFin: string;
+  }) => void;
   getActividad: (id: string) => Actividad | undefined;
+  getSubtareas: (actividadId: string) => Actividad[];
   editarActividad: (id: string, patch: Partial<Actividad>) => void;
+  moverActividadConSubtareas: (id: string, deltaDias: number) => void;
+  redimensionarActividad: (
+    id: string,
+    extremo: "inicio" | "fin",
+    nuevaFecha: string,
+  ) => void;
+  programarActividad: (id: string, inicio: string, fin: string) => void;
 }
 
 const ClarityContext = createContext<ClarityStore | null>(null);
@@ -73,7 +94,7 @@ export function ClarityStoreProvider({
   children: React.ReactNode;
 }) {
   const [proyectos, setProyectos] = useState<Proyecto[]>(MOCK_PROYECTOS);
-  const [actividades, setActividades] = useState<Actividad[]>([]);
+  const [actividades, setActividades] = useState<Actividad[]>(MOCK_ACTIVIDADES);
   const [log, setLog] = useState<LogEntry[]>([]);
 
   const registrarLog = useCallback(
@@ -279,15 +300,19 @@ export function ClarityStoreProvider({
   );
 
   const agregarActividad = useCallback(
-    (proyectoId: string, titulo: string) => {
+    (
+      proyectoId: string,
+      titulo: string,
+      opciones?: { seccion?: string | null; parentId?: string | null },
+    ) => {
       if (!titulo.trim()) return;
       const nueva: Actividad = {
         id: crypto.randomUUID(),
         proyecto_id: proyectoId,
-        parent_id: null,
+        parent_id: opciones?.parentId ?? null,
         titulo: titulo.trim(),
         descripcion: "",
-        seccion: null,
+        seccion: opciones?.seccion ?? null,
         fecha_inicio: null,
         fecha_fin: null,
         progreso: 0,
@@ -301,7 +326,43 @@ export function ClarityStoreProvider({
       setActividades((prev) => [...prev, nueva]);
       registrarLog(
         proyectoId,
-        `ha añadido la actividad "${nueva.titulo}" al backlog`,
+        `ha añadido la ${opciones?.parentId ? "subtarea" : "actividad"} "${nueva.titulo}" al backlog`,
+        nueva.id,
+      );
+    },
+    [registrarLog],
+  );
+
+  const crearTareaProgramada = useCallback(
+    (input: {
+      proyectoId: string;
+      titulo: string;
+      seccion: string;
+      fechaInicio: string;
+      fechaFin: string;
+    }) => {
+      if (!input.titulo.trim()) return;
+      const nueva: Actividad = {
+        id: crypto.randomUUID(),
+        proyecto_id: input.proyectoId,
+        parent_id: null,
+        titulo: input.titulo.trim(),
+        descripcion: "",
+        seccion: input.seccion.trim(),
+        fecha_inicio: input.fechaInicio,
+        fecha_fin: input.fechaFin,
+        progreso: 0,
+        prioridad: "media",
+        etiquetas: [],
+        dependencias: [],
+        checklist: [],
+        comentarios: [],
+        asignado_a: null,
+      };
+      setActividades((prev) => [...prev, nueva]);
+      registrarLog(
+        input.proyectoId,
+        `ha creado la tarea "${nueva.titulo}" en ${nueva.seccion}`,
         nueva.id,
       );
     },
@@ -313,6 +374,12 @@ export function ClarityStoreProvider({
     [actividades],
   );
 
+  const getSubtareas = useCallback(
+    (actividadId: string) =>
+      actividades.filter((a) => a.parent_id === actividadId),
+    [actividades],
+  );
+
   const editarActividad = useCallback(
     (id: string, patch: Partial<Actividad>) => {
       const actual = actividades.find((a) => a.id === id);
@@ -321,6 +388,67 @@ export function ClarityStoreProvider({
         prev.map((a) => (a.id === id ? { ...a, ...patch } : a)),
       );
       registrarLog(actual.proyecto_id, "ha actualizado una actividad", id);
+    },
+    [actividades, registrarLog],
+  );
+
+  const moverActividadConSubtareas = useCallback(
+    (id: string, deltaDias: number) => {
+      if (deltaDias === 0) return;
+      const actual = actividades.find((a) => a.id === id);
+      if (!actual || !actual.fecha_inicio || !actual.fecha_fin) return;
+      const afectadas = new Set([
+        id,
+        ...actividades.filter((a) => a.parent_id === id).map((a) => a.id),
+      ]);
+      setActividades((prev) =>
+        prev.map((a) =>
+          afectadas.has(a.id) && a.fecha_inicio && a.fecha_fin
+            ? {
+                ...a,
+                fecha_inicio: addDays(a.fecha_inicio, deltaDias),
+                fecha_fin: addDays(a.fecha_fin, deltaDias),
+              }
+            : a,
+        ),
+      );
+      registrarLog(actual.proyecto_id, "ha movido las fechas de una actividad", id);
+    },
+    [actividades, registrarLog],
+  );
+
+  const redimensionarActividad = useCallback(
+    (id: string, extremo: "inicio" | "fin", nuevaFecha: string) => {
+      const actual = actividades.find((a) => a.id === id);
+      if (!actual) return;
+      if (extremo === "inicio" && actual.fecha_fin && nuevaFecha > actual.fecha_fin) return;
+      if (extremo === "fin" && actual.fecha_inicio && nuevaFecha < actual.fecha_inicio) return;
+      setActividades((prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? {
+                ...a,
+                fecha_inicio: extremo === "inicio" ? nuevaFecha : a.fecha_inicio,
+                fecha_fin: extremo === "fin" ? nuevaFecha : a.fecha_fin,
+              }
+            : a,
+        ),
+      );
+      registrarLog(actual.proyecto_id, "ha cambiado la duración de una actividad", id);
+    },
+    [actividades, registrarLog],
+  );
+
+  const programarActividad = useCallback(
+    (id: string, inicio: string, fin: string) => {
+      const actual = actividades.find((a) => a.id === id);
+      if (!actual) return;
+      setActividades((prev) =>
+        prev.map((a) =>
+          a.id === id ? { ...a, fecha_inicio: inicio, fecha_fin: fin } : a,
+        ),
+      );
+      registrarLog(actual.proyecto_id, "ha programado una actividad", id);
     },
     [actividades, registrarLog],
   );
@@ -347,8 +475,13 @@ export function ClarityStoreProvider({
       agregarComentario,
       iniciarGantt,
       agregarActividad,
+      crearTareaProgramada,
       getActividad,
+      getSubtareas,
       editarActividad,
+      moverActividadConSubtareas,
+      redimensionarActividad,
+      programarActividad,
     }),
     [
       proyectos,
@@ -371,8 +504,13 @@ export function ClarityStoreProvider({
       agregarComentario,
       iniciarGantt,
       agregarActividad,
+      crearTareaProgramada,
       getActividad,
+      getSubtareas,
       editarActividad,
+      moverActividadConSubtareas,
+      redimensionarActividad,
+      programarActividad,
     ],
   );
 
