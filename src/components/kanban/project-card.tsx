@@ -30,7 +30,7 @@ export function ProjectCard({
       {...attributes}
       onClick={() => onAbrir(proyecto.id)}
       className={cn(
-        "cursor-grab select-none rounded-md border border-border border-t-2 bg-surface p-3 shadow-sm active:cursor-grabbing",
+        "cursor-grab select-none rounded-md border border-border border-t-2 bg-surface p-3 hover:border-border-strong active:cursor-grabbing",
         isDragging && "opacity-50",
       )}
     >

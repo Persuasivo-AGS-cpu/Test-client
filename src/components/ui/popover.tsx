@@ -15,7 +15,7 @@ export function PopoverContent({
       <PopoverPrimitive.Content
         sideOffset={6}
         className={cn(
-          "z-50 rounded-md border border-border bg-surface p-3 shadow-lg outline-none",
+          "z-50 rounded-md border border-border-strong bg-surface p-3 shadow-sm outline-none",
           className,
         )}
         {...props}

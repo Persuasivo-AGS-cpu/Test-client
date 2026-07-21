@@ -128,7 +128,7 @@ export function QuickActions({
               type="date"
               value={inicio}
               onChange={(e) => setInicio(e.target.value)}
-              className="rounded-sm border border-border-strong px-2 py-1 text-sm outline-none focus:border-accent"
+              className="rounded-sm border border-border-strong px-2 py-1 font-mono text-sm outline-none focus:border-accent"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-text-secondary">
@@ -137,7 +137,7 @@ export function QuickActions({
               type="date"
               value={fin}
               onChange={(e) => setFin(e.target.value)}
-              className="rounded-sm border border-border-strong px-2 py-1 text-sm outline-none focus:border-accent"
+              className="rounded-sm border border-border-strong px-2 py-1 font-mono text-sm outline-none focus:border-accent"
             />
           </label>
           <button

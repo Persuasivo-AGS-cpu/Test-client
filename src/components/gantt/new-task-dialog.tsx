@@ -82,7 +82,7 @@ export function NewTaskDialog({
                 type="date"
                 value={fechaInicio}
                 onChange={(e) => setFechaInicio(e.target.value)}
-                className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="rounded-md border border-border-strong bg-surface px-3 py-1.5 font-mono text-sm text-text-primary outline-none focus:border-accent"
               />
             </label>
             <label className="flex flex-col gap-1.5 text-xs font-medium text-text-secondary">
@@ -91,7 +91,7 @@ export function NewTaskDialog({
                 type="date"
                 value={fechaFin}
                 onChange={(e) => setFechaFin(e.target.value)}
-                className="rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-text-primary outline-none focus:border-accent"
+                className="rounded-md border border-border-strong bg-surface px-3 py-1.5 font-mono text-sm text-text-primary outline-none focus:border-accent"
               />
             </label>
           </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { X } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useClarityStore } from "@/lib/store";
 
@@ -11,8 +12,13 @@ export function ActivityDetailDialog({
   actividadId: string | null;
   onClose: () => void;
 }) {
-  const { getActividad, getSubtareas, editarActividad, agregarActividad } =
-    useClarityStore();
+  const {
+    getActividad,
+    getSubtareas,
+    editarActividad,
+    agregarActividad,
+    quitarDependencia,
+  } = useClarityStore();
   const actividad = actividadId ? getActividad(actividadId) : undefined;
   const [descripcion, setDescripcion] = useState(actividad?.descripcion ?? "");
   const [nuevaSubtarea, setNuevaSubtarea] = useState("");
@@ -54,7 +60,7 @@ export function ActivityDetailDialog({
                     progreso: Math.min(100, Math.max(0, Number(e.target.value) || 0)),
                   })
                 }
-                className="rounded-sm border border-border-strong px-2 py-1 text-sm text-text-primary outline-none focus:border-accent"
+                className="rounded-sm border border-border-strong px-2 py-1 font-mono text-sm text-text-primary outline-none focus:border-accent"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-text-secondary">
@@ -67,7 +73,7 @@ export function ActivityDetailDialog({
                     fecha_inicio: e.target.value || null,
                   })
                 }
-                className="rounded-sm border border-border-strong px-2 py-1 text-sm text-text-primary outline-none focus:border-accent"
+                className="rounded-sm border border-border-strong px-2 py-1 font-mono text-sm text-text-primary outline-none focus:border-accent"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-text-secondary">
@@ -80,7 +86,7 @@ export function ActivityDetailDialog({
                     fecha_fin: e.target.value || null,
                   })
                 }
-                className="rounded-sm border border-border-strong px-2 py-1 text-sm text-text-primary outline-none focus:border-accent"
+                className="rounded-sm border border-border-strong px-2 py-1 font-mono text-sm text-text-primary outline-none focus:border-accent"
               />
             </label>
           </div>
@@ -104,6 +110,34 @@ export function ActivityDetailDialog({
               Sin fechas — vive en el backlog del Gantt hasta que se
               programe.
             </p>
+          )}
+
+          {actividad.dependencias.length > 0 && (
+            <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+              <h3 className="text-xs font-semibold text-text-primary">
+                Depende de
+              </h3>
+              <ul className="flex flex-col gap-1">
+                {actividad.dependencias.map((depId) => {
+                  const predecesora = getActividad(depId);
+                  return (
+                    <li
+                      key={depId}
+                      className="flex items-center justify-between text-sm text-text-primary"
+                    >
+                      <span>{predecesora?.titulo ?? "Actividad eliminada"}</span>
+                      <button
+                        onClick={() => quitarDependencia(actividad.id, depId)}
+                        className="text-text-muted hover:text-danger"
+                        title="Quitar dependencia"
+                      >
+                        <X size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
 
           {esRaiz && (
