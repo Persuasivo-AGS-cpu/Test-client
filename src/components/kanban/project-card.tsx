@@ -6,7 +6,13 @@ import { cn } from "@/lib/utils";
 import { PriorityBadge } from "@/components/ui/badge";
 import type { Proyecto } from "@/lib/types";
 
-export function ProjectCard({ proyecto }: { proyecto: Proyecto }) {
+export function ProjectCard({
+  proyecto,
+  onAbrir,
+}: {
+  proyecto: Proyecto;
+  onAbrir: (id: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: proyecto.id });
 
@@ -22,6 +28,7 @@ export function ProjectCard({ proyecto }: { proyecto: Proyecto }) {
       style={{ ...style, borderTopColor: borderColor }}
       {...listeners}
       {...attributes}
+      onClick={() => onAbrir(proyecto.id)}
       className={cn(
         "cursor-grab select-none rounded-md border border-border border-t-2 bg-surface p-3 shadow-sm active:cursor-grabbing",
         isDragging && "opacity-50",

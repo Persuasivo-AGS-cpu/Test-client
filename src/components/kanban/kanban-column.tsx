@@ -9,10 +9,12 @@ export function KanbanColumn({
   id,
   titulo,
   proyectos,
+  onAbrir,
 }: {
   id: ColumnaKanban;
   titulo: string;
   proyectos: Proyecto[];
+  onAbrir: (id: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -32,7 +34,7 @@ export function KanbanColumn({
         )}
       >
         {proyectos.map((p) => (
-          <ProjectCard key={p.id} proyecto={p} />
+          <ProjectCard key={p.id} proyecto={p} onAbrir={onAbrir} />
         ))}
       </div>
     </div>

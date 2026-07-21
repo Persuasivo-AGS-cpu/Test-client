@@ -1,19 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { DndContext, type DragEndEvent } from "@dnd-kit/core";
+import {
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import { KanbanColumn } from "@/components/kanban/kanban-column";
 import { LabelFilter } from "@/components/kanban/label-filter";
 import { NewProjectDialog } from "@/components/kanban/new-project-dialog";
-import { COLUMNAS, type ColumnaKanban, type Proyecto } from "@/lib/types";
+import { ProjectDetailModal } from "@/components/kanban/project-detail-modal";
+import { useClarityStore } from "@/lib/store";
+import { COLUMNAS, type ColumnaKanban } from "@/lib/types";
 
-export function KanbanBoard({
-  initialProyectos,
-}: {
-  initialProyectos: Proyecto[];
-}) {
-  const [proyectos, setProyectos] = useState(initialProyectos);
+export function KanbanBoard() {
+  const { proyectos, createProyecto, moverProyecto } = useClarityStore();
   const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set());
+  const [proyectoAbierto, setProyectoAbierto] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+  );
 
   const etiquetasUnicas = useMemo(() => {
     const map = new Map<string, string>();
@@ -42,41 +50,7 @@ export function KanbanBoard({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over) return;
-    const nuevaColumna = over.id as ColumnaKanban;
-    setProyectos((prev) =>
-      prev.map((p) =>
-        p.id === active.id
-          ? {
-              ...p,
-              columna_kanban: nuevaColumna,
-              actualizado_en: new Date().toISOString(),
-            }
-          : p,
-      ),
-    );
-  };
-
-  const handleCreate = (input: {
-    nombre: string;
-    descripcion: string;
-    prioridad: Proyecto["prioridad"];
-    etiqueta: string;
-    color: string;
-  }) => {
-    const nuevo: Proyecto = {
-      id: crypto.randomUUID(),
-      nombre: input.nombre,
-      descripcion: input.descripcion,
-      prioridad: input.prioridad,
-      etiquetas: input.etiqueta
-        ? [{ nombre: input.etiqueta, color: input.color }]
-        : [],
-      columna_kanban: "idea",
-      iniciado_en_gantt: false,
-      creado_en: new Date().toISOString(),
-      actualizado_en: new Date().toISOString(),
-    };
-    setProyectos((prev) => [nuevo, ...prev]);
+    moverProyecto(active.id as string, over.id as ColumnaKanban);
   };
 
   return (
@@ -87,9 +61,9 @@ export function KanbanBoard({
           seleccionadas={seleccionadas}
           onToggle={toggleEtiqueta}
         />
-        <NewProjectDialog onCreate={handleCreate} />
+        <NewProjectDialog onCreate={createProyecto} />
       </div>
-      <DndContext id="kanban-dnd" onDragEnd={handleDragEnd}>
+      <DndContext id="kanban-dnd" sensors={sensors} onDragEnd={handleDragEnd}>
         <div className="flex flex-1 gap-4 overflow-x-auto">
           {COLUMNAS.map((col) => (
             <KanbanColumn
@@ -99,10 +73,16 @@ export function KanbanBoard({
               proyectos={proyectosFiltrados.filter(
                 (p) => p.columna_kanban === col.id,
               )}
+              onAbrir={setProyectoAbierto}
             />
           ))}
         </div>
       </DndContext>
+
+      <ProjectDetailModal
+        proyectoId={proyectoAbierto}
+        onClose={() => setProyectoAbierto(null)}
+      />
     </div>
   );
 }

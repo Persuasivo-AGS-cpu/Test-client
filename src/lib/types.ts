@@ -27,8 +27,21 @@ export interface Proyecto {
   etiquetas: Etiqueta[];
   columna_kanban: ColumnaKanban;
   iniciado_en_gantt: boolean;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  checklist: ChecklistItem[];
+  miembros: string[];
   creado_en: string;
   actualizado_en: string;
+}
+
+export interface LogEntry {
+  id: string;
+  proyecto_id: string;
+  actividad_id: string | null;
+  autor: string;
+  detalle: string;
+  creado_en: string;
 }
 
 export interface Actividad {

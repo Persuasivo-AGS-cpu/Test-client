@@ -8,6 +8,10 @@ create table if not exists proyectos (
   etiquetas jsonb not null default '[]',
   columna_kanban text not null check (columna_kanban in ('idea','en_progreso','revision','completado')) default 'idea',
   iniciado_en_gantt boolean not null default false,
+  fecha_inicio date,
+  fecha_fin date,
+  checklist jsonb not null default '[]',
+  miembros text[] not null default '{}',
   propietario_user_id uuid not null references auth.users(id) default auth.uid(),
   creado_en timestamptz not null default now(),
   actualizado_en timestamptz not null default now()
@@ -39,7 +43,6 @@ create table if not exists actividad_log (
   proyecto_id uuid not null references proyectos(id) on delete cascade,
   actividad_id uuid references actividades(id) on delete cascade,
   autor text not null,
-  tipo text not null,
   detalle text not null,
   creado_en timestamptz not null default now()
 );
